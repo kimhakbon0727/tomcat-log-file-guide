@@ -1,137 +1,142 @@
-## 📂 로그 파일 종류 및 언제 봐야 하는가
+## 📂 상황별 로그 확인 가이드
 
-> 🔑 **유지보수 핵심 원칙**
-> 오류가 발생했을 때 세 가지 로그를 무작정 다 열지 말고,
-> **"지금 어떤 상황인가"** 를 먼저 판단한 뒤 해당 로그부터 확인하세요.
+> 오류 발생 시 **"지금 어떤 상황인가"** 를 먼저 파악하고, 아래 시나리오에 맞는 로그를 확인하세요.
+> 로그 파일 경로: `$CATALINA_HOME/logs/`
 
 ---
 
-### 1️⃣ catalina.out — 톰캣 서버 자체 로그
+### 🖥️ 시나리오 1 — 홈페이지 자체가 아예 안 열릴 때
 
-```
-경로: $CATALINA_HOME/logs/catalina.out
-```
+**증상:** 브라우저에서 구청 홈페이지 접속 시 연결 자체가 안 됨 (브라우저 오류 화면)
 
-#### ✅ 이 로그를 봐야 하는 상황
-
-| 상황 | 구체적인 증상 |
-|---|---|
-| 톰캣이 아예 안 뜰 때 | startup.sh 실행해도 프로세스가 올라오지 않음 |
-| 서버가 갑자기 죽었을 때 | 운영 중 톰캣 프로세스가 사라짐 |
-| JVM 관련 오류 | OutOfMemoryError, StackOverflowError 발생 |
-| 설정 파일 오류 | server.xml, context.xml 수정 후 기동 실패 |
-| 톰캣 버전업 / 이전 후 | 환경 변경 뒤 첫 기동 시 문제 발생 |
-
-#### ❌ 이 로그로 해결 안 되는 상황
-
-- 특정 앱만 안 뜰 때 → `localhost.log` 확인
-- 특정 URL이 404/500 날 때 → `access_log` 확인
-
-#### 🔍 실전 확인 명령어
+**→ 확인할 로그: `catalina.out`**
 
 ```bash
-# 실시간 확인
 tail -f $CATALINA_HOME/logs/catalina.out
-
-# SEVERE(심각) 오류만 추출
 grep "SEVERE" $CATALINA_HOME/logs/catalina.out | tail -30
-
-# Exception 발생 위치 + 스택트레이스 같이 보기
-grep -A 20 "Exception" $CATALINA_HOME/logs/catalina.out | tail -60
 ```
+
+**이유:** 톰캣 서버 자체가 죽었거나 기동에 실패한 상황이므로
+서버 레벨 로그인 catalina.out 에서 원인을 찾아야 함
 
 ---
 
-### 2️⃣ localhost.yyyy-mm-dd.log — 웹 애플리케이션 로그
+### 🔍 시나리오 2 — 특정 메뉴/페이지만 404 뜰 때
 
-```
-경로: $CATALINA_HOME/logs/localhost.$(date +%Y-%m-%d).log
-```
+**증상:** 홈은 정상인데 "민원신청", "공지사항" 등 특정 페이지만 Not Found
 
-#### ✅ 이 로그를 봐야 하는 상황
-
-| 상황 | 구체적인 증상 |
-|---|---|
-| WAR 배포 후 앱이 안 뜰 때 | catalina.out엔 이상 없는데 앱 접속이 안 됨 |
-| 배포는 됐는데 특정 기능 오류 | 일부 페이지만 500 에러, 나머지는 정상 |
-| 앱 초기화 오류 | DB 연결, Bean 생성 실패 등 기동 시점 오류 |
-| 라이브러리 충돌 의심 | jar 버전 변경 후 문제 발생 |
-| catalina.out에 단서가 없을 때 | 서버는 정상인데 앱만 이상할 때 2순위로 확인 |
-
-#### ❌ 이 로그로 해결 안 되는 상황
-
-- 톰캣 자체가 안 뜰 때 → `catalina.out` 확인
-- 누가 어떤 URL을 요청했는지 → `access_log` 확인
-
-#### 🔍 실전 확인 명령어
+**→ 확인할 로그: `localhost_access_log`**
 
 ```bash
-# 오늘 날짜 로그 실시간 확인
-tail -f $CATALINA_HOME/logs/localhost.$(date +%Y-%m-%d).log
-
-# 배포 실패 원인 추적
-grep -i "SEVERE\|ERROR\|Exception" $CATALINA_HOME/logs/localhost.$(date +%Y-%m-%d).log
-
-# 특정 앱(컨텍스트) 관련 로그만 보기
-grep "/myapp" $CATALINA_HOME/logs/localhost.$(date +%Y-%m-%d).log
+grep " 404 " $CATALINA_HOME/logs/localhost_access_log.$(date +%Y-%m-%d).txt | tail -20
 ```
+
+**이유:** 어떤 URL에서 404가 발생했는지 요청 기록이 남아 있어
+URL 경로 오류인지, 배포 누락인지 판단 가능
 
 ---
 
-### 3️⃣ localhost_access_log.yyyy-mm-dd.txt — HTTP 요청/응답 로그
+### 💥 시나리오 3 — 특정 기능 클릭 시 500 에러 뜰 때
 
-```
-경로: $CATALINA_HOME/logs/localhost_access_log.$(date +%Y-%m-%d).txt
-```
+**증상:** "민원 접수하기" 버튼 클릭 시 500 Internal Server Error 페이지 출력
 
-#### ✅ 이 로그를 봐야 하는 상황
-
-| 상황 | 구체적인 증상 |
-|---|---|
-| 404 에러 발생 | 특정 URL 접근 시 Not Found |
-| 500 에러 발생 | 어떤 요청에서 에러가 났는지 특정 필요 |
-| 특정 시간대 장애 원인 파악 | "오후 2시에 갑자기 느려졌어요" 같은 제보 |
-| 외부 IP 접근 확인 | 특정 IP가 요청을 보냈는지 확인 |
-| 응답 속도 저하 의심 | 요청별 처리 시간 확인 (포맷 설정 시) |
-
-#### ❌ 이 로그로 해결 안 되는 상황
-
-- 오류의 원인(코드 레벨) → `catalina.out` 또는 `localhost.log` 확인
-- 톰캣/앱 기동 문제 → 위 두 로그 확인
-
-#### 🔍 실전 확인 명령어
+**→ 확인할 로그: `localhost_access_log` → `localhost.log` 순서로 확인**
 
 ```bash
-# 오늘 404 요청 전체 보기
-grep " 404 " $CATALINA_HOME/logs/localhost_access_log.$(date +%Y-%m-%d).txt
-
-# 500 에러 발생 시각과 URL 확인
+# 1단계: 500 발생 시각과 URL 특정
 grep " 500 " $CATALINA_HOME/logs/localhost_access_log.$(date +%Y-%m-%d).txt | tail -20
 
-# 특정 IP 접근 기록 확인
-grep "192.168.1.100" $CATALINA_HOME/logs/localhost_access_log.$(date +%Y-%m-%d).txt
-
-# 특정 시간대 요청 확인 (예: 14시)
-grep "\[28/Apr/2026:14:" $CATALINA_HOME/logs/localhost_access_log.$(date +%Y-%m-%d).txt
+# 2단계: 해당 시각 기준으로 앱 로그에서 원인 추적
+grep -A 20 "Exception" $CATALINA_HOME/logs/localhost.$(date +%Y-%m-%d).log | tail -60
 ```
+
+**이유:** access_log 로 "언제, 어떤 요청에서" 500이 났는지 특정하고
+localhost.log 에서 실제 코드 오류 원인(Exception)을 찾는 순서
 
 ---
 
-### 🗺️ 상황별 로그 선택 흐름
+### 📦 시나리오 4 — 배포(업데이트) 후 사이트가 안 뜰 때
 
+**증상:** 새 버전 WAR 배포 후 홈페이지 접속 안 됨, 톰캣은 프로세스 살아있음
+
+**→ 확인할 로그: `localhost.log`**
+
+```bash
+tail -100 $CATALINA_HOME/logs/localhost.$(date +%Y-%m-%d).log
+grep "SEVERE\|Exception" $CATALINA_HOME/logs/localhost.$(date +%Y-%m-%d).log | tail -30
 ```
-오류 발생
-    │
-    ├─ 톰캣 프로세스 자체가 없거나 기동 실패?
-    │       └─→ catalina.out ✅
-    │
-    ├─ 톰캣은 떠 있는데 특정 앱/기능이 안 됨?
-    │       └─→ localhost.log ✅
-    │
-    └─ 어떤 요청에서 문제가 생겼는지 모르겠음?
-            └─→ access_log ✅
-                    │
-                    └─ URL/시각 특정 후
-                       → catalina.out 또는 localhost.log에서
-                         해당 시각 기준으로 원인 추적
+
+**이유:** 톰캣은 정상이지만 앱(WAR) 초기화에 실패한 상황
+앱 배포/초기화 오류는 localhost.log 에 기록됨
+(DB 연결 실패, 설정 오류, 라이브러리 충돌 등)
+
+---
+
+### 🐌 시나리오 5 — 홈페이지가 갑자기 느려졌을 때
+
+**증상:** 특정 시간대부터 페이지 로딩이 매우 느려졌다는 민원 접수
+
+**→ 확인할 로그: `localhost_access_log`**
+
+```bash
+# 해당 시간대 요청량 확인 (예: 14시대)
+grep "\[28/Apr/2026:14:" $CATALINA_HOME/logs/localhost_access_log.$(date +%Y-%m-%d).txt | wc -l
+
+# 느린 응답 요청 확인 (응답시간 포맷 설정된 경우)
+grep "\[28/Apr/2026:14:" $CATALINA_HOME/logs/localhost_access_log.$(date +%Y-%m-%d).txt | tail -30
 ```
+
+**이유:** 어느 시간대에 트래픽이 몰렸는지, 특정 URL에 요청이 집중됐는지
+access_log 에서 패턴을 먼저 파악해야 원인 추적 가능
+
+---
+
+### 💾 시나리오 6 — 서버가 갑자기 다운됐다 살아날 때 (간헐적 장애)
+
+**증상:** 하루에 몇 번씩 홈페이지가 잠깐 안 되다가 다시 됨
+
+**→ 확인할 로그: `catalina.out`**
+
+```bash
+# OutOfMemoryError 여부 확인
+grep "OutOfMemoryError" $CATALINA_HOME/logs/catalina.out
+
+# 톰캣 재기동 시각 확인
+grep "Server startup\|Server shutdown" $CATALINA_HOME/logs/catalina.out
+```
+
+**이유:** 간헐적 다운은 메모리 부족(OOM) 또는 JVM 크래시가 원인인 경우가 많음
+catalina.out 에서 재기동 시각과 직전 오류를 함께 확인
+
+---
+
+### 👤 시나리오 7 — 로그인은 되는데 특정 사용자만 오류 난다고 할 때
+
+**증상:** 일반 사용자는 정상인데 특정 직원/부서만 기능 오류 발생
+
+**→ 확인할 로그: `localhost_access_log` → `localhost.log` 순서로 확인**
+
+```bash
+# 해당 사용자 세션의 요청 패턴 확인 (IP 기준)
+grep "해당IP" $CATALINA_HOME/logs/localhost_access_log.$(date +%Y-%m-%d).txt
+
+# 해당 시각 앱 오류 확인
+grep -A 15 "Exception" $CATALINA_HOME/logs/localhost.$(date +%Y-%m-%d).log
+```
+
+**이유:** 특정 사용자 요청만 오류나는 경우 권한, 세션, 데이터 문제가 원인
+access_log 로 요청 패턴 확인 후 localhost.log 에서 Exception 원인 추적
+
+---
+
+### 📋 한눈에 보는 시나리오별 로그 요약
+
+| 상황 | 1순위 로그 | 2순위 로그 |
+|---|---|---|
+| 홈페이지 자체가 안 열림 | `catalina.out` | - |
+| 특정 페이지만 404 | `access_log` | - |
+| 특정 기능 클릭 시 500 | `access_log` | `localhost.log` |
+| 배포 후 사이트 안 뜸 | `localhost.log` | - |
+| 갑자기 느려짐 | `access_log` | - |
+| 간헐적 다운/재기동 | `catalina.out` | - |
+| 특정 사용자만 오류 | `access_log` | `localhost.log` |
